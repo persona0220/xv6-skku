@@ -49,6 +49,7 @@ void slabinit(){
 
 char *kmalloc(int size){
 	/* fill in the blank */
+	acquire(&stable.lock);
 	int i = 0;
 	int eight = 8;
 	
@@ -63,13 +64,10 @@ char *kmalloc(int size){
 	if(stable.slab[i].num_free_objects == 0){
 		//need more page..
 
-		acquire(&stable.lock);
 		//make new page, using kalloc.
 		int e = stable.slab[i].num_pages;
 		stable.slab[i].num_pages++;
-		cprintf("new page%d, %x ", e, stable.slab[i].page[e]);
 		stable.slab[i].page[e] = kalloc();
-		cprintf("new page%d, %x\n", e, stable.slab[i].page[e]);
 		stable.slab[i].num_free_objects = stable.slab[i].num_objects_per_page;
 		
 		//put a new object in the newly allocated page's first slot.
@@ -84,7 +82,6 @@ char *kmalloc(int size){
 		//find the free slot
 		int k;
 		int page = 0, obj = 0;
-		acquire(&stable.lock);
 		for(k = 0; k<4096; k++){
 			if(stable.slab[i].bitmap[k] != -1){
 				//free object in this char!

@@ -242,7 +242,7 @@ qemu-nox-gdb: fs.img xv6.img .gdbinit
 # SKKU operating system
 PROJECTNUM=3
 # enter your ID
-STUDENTID=2011311671
+STUDENTID=2014314920
 
 # DO NOT EDIT
 tarball:

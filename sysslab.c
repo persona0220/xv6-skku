@@ -5,8 +5,8 @@
 #include "mmu.h"
 #include "spinlock.h"
 
-#define TESTALLOCSIZE 9
-#define NTEST 1000
+#define TESTALLOCSIZE 64 
+#define NTEST 5120 
 
 struct test{
 	char data[TESTALLOCSIZE];

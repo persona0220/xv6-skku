@@ -13,6 +13,7 @@ struct {
 
 void slabinit(){
 	acquire(&stable.lock);
+	cprintf("init ...");
 	/* fill in the blank */
 	int i, j;
 	int s = 8;
@@ -44,11 +45,40 @@ void slabinit(){
 		
 		s *= 2;
 	}
+	cprintf("init finished\n");
 	release(&stable.lock);
 }
+/*
+int find_empty_page(int slabno){
+	
+	//if a page is all empty
+	int isempty = 1;
+	int i, j;
+	int char_per_page = stable.slab[slabno].num_objects_per_page/8;
+	if(char_per_page == 0) char_per_page++;
+
+	for(i=0; i<MAX_PAGES_PER_SLAB; i++){
+		isempty=1;
+		for(j = 0; j<char_per_page; j++){
+			if((slabno < 7 && stable.slab[slabno].bitmap[i*char_per_page+j] != 0) || (slabno == 7 && stable.slab[slabno].bitmap[i] != -16) || (slabno == 8 && stable.slab[slabno].bitmap[i]!= -4)){
+				isempty = 0;
+				break;
+			}
+		}
+
+		if(isempty == 1){
+			cprintf("//%d th page is empty.//", i);
+			return i;
+		}
+	}
+
+	return -1;
+}
+*/
 
 char *kmalloc(int size){
 	/* fill in the blank */
+	acquire(&stable.lock);
 	int i = 0;
 	int eight = 8;
 	
@@ -60,16 +90,15 @@ char *kmalloc(int size){
 	int char_per_page = stable.slab[i].num_objects_per_page/8;
 	if(char_per_page == 0) char_per_page++;
 
+	cprintf("kmalloc started...%d, %d, %d, [%d.%d.%d]",size, stable.slab[i].size, stable.slab[i].num_free_objects, stable.slab[i].bitmap[0], stable.slab[i].bitmap[1], stable.slab[i].bitmap[2]);	
 	if(stable.slab[i].num_free_objects == 0){
 		//need more page..
+		cprintf("need more page...");
 
-		acquire(&stable.lock);
 		//make new page, using kalloc.
 		int e = stable.slab[i].num_pages;
 		stable.slab[i].num_pages++;
-		cprintf("new page%d, %x ", e, stable.slab[i].page[e]);
 		stable.slab[i].page[e] = kalloc();
-		cprintf("new page%d, %x\n", e, stable.slab[i].page[e]);
 		stable.slab[i].num_free_objects = stable.slab[i].num_objects_per_page;
 		
 		//put a new object in the newly allocated page's first slot.
@@ -78,19 +107,21 @@ char *kmalloc(int size){
 		stable.slab[i].bitmap[char_per_page*e] += 1;
 		
 		release(&stable.lock);
+		cprintf(".. %dpage, %dobj, (%x)\n",e, 0, stable.slab[i].page[e]);
 		return stable.slab[i].page[e];
 	}
 	else{
 		//find the free slot
+		cprintf("find...");
 		int k;
 		int page = 0, obj = 0;
-		acquire(&stable.lock);
 		for(k = 0; k<4096; k++){
 			if(stable.slab[i].bitmap[k] != -1){
 				//free object in this char!
 				
 				int bit = (int)(unsigned char)stable.slab[i].bitmap[k];
 				
+				cprintf("bit = %d/", bit);
 				int o = 0;
 				int o2 = 1;
 				while(bit != 0){
@@ -119,6 +150,7 @@ char *kmalloc(int size){
 				break;
 			}
 		}
+		cprintf("existing page.. %dpage, %dobj, %x\n", page, obj, stable.slab[i].page[page]+obj*stable.slab[i].size);
 		release(&stable.lock);
 		return stable.slab[i].page[page] + obj*stable.slab[i].size; 
 	}
@@ -126,12 +158,14 @@ char *kmalloc(int size){
 
 void kmfree(char *addr){
 	acquire(&stable.lock);
+	cprintf("kmfree start...finding %x..", addr);
 	
 	int find = 0;
 	int i,j;
 	for(i = 0; i<NSLAB; i++){
 		for(j = 0; j < MAX_PAGES_PER_SLAB; j++){
 			if (stable.slab[i].page[j] <= addr && addr <= stable.slab[i].page[j] + (stable.slab[i].num_objects_per_page-1)*stable.slab[i].size){
+			cprintf("//%x< %x < %x(page%d)//", stable.slab[i].page[j], addr, stable.slab[i].page[j] +(stable.slab[i].num_objects_per_page-1)*stable.slab[i].size, j);
 				find = 1;
 				break;
 			}
@@ -159,6 +193,7 @@ void kmfree(char *addr){
 		o2*=2;
 	}
 	stable.slab[i].bitmap[k] -= o2;
+	cprintf("size = %d, page = %d, obj = %d... \n", stable.slab[i].size, page, obj);
 	release(&stable.lock);
 }
 
