@@ -7,6 +7,7 @@
 #include "proc.h"
 #include "spinlock.h"
 
+
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -72,7 +73,8 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
-
+  p->nice = 20;
+  p->counter = 0;
   return p;
 }
 
@@ -110,7 +112,6 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
-
   release(&ptable.lock);
 }
 
@@ -158,7 +159,8 @@ fork(void)
   np->sz = proc->sz;
   np->parent = proc;
   *np->tf = *proc->tf;
-
+  np->counter = (proc->counter+1) >>1;
+  proc->counter >>= 1;
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
 
@@ -276,36 +278,72 @@ wait(void)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
+
+int getcounter(int nice){
+	return ((40 - nice) >> 2) + 1;
+}
+
+int goodness(struct proc* p){
+	int weight = p->counter;
+	if(weight == 0) return weight;
+
+	weight += (20 - p->nice);
+	return weight;
+}
+
 void
 scheduler(void)
 {
   struct proc *p;
+  struct proc *next;
 
+  //infinite Loop
   for(;;){
-    // Enable interrupts on this processor.
-    sti();
+	  // Enable interrupts on this processor.
+	  sti();
+	  // Loop over process table looking for process to run.	
+	  
+	  acquire(&ptable.lock);
+	  int epoch = 1;
+	  //find next process which have highest weight.
+	  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+	  	if(p->state != RUNNABLE) continue;
+		if(p->counter != 0) epoch = 0;
+	  }
 
-    // Loop over process table looking for process to run.
-    acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
+	  if(epoch){
+	  	for(p = ptable.proc ; p < &ptable.proc[NPROC]; p++){
+			if(p->state == UNUSED) continue;
+			p->counter = (p->counter >> 1) + getcounter(p->nice);
+		}
+	  }
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-      swtch(&cpu->scheduler, p->context);
-      switchkvm();
+	  next = ptable.proc;
+	  int c = -1000;
+	  int weight;
+	  for(p = ptable.proc; p< &ptable.proc[NPROC]; p++){
+	  	if(p->state != RUNNABLE) continue;
 
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      proc = 0;
-    }
-    release(&ptable.lock);
+		weight = goodness(p);
+		if(weight > c){
+			c = weight;
+			next = p;
+		}
+	  }
 
+	  if(next -> state == RUNNABLE){
+	
+ //       cprintf("pid:%d, nice:%d, state:%d, name:%s, counter:%d, goodness:%d\n", next->pid, next->nice, next->state, next->name, next->counter, goodness(next));
+		next->counter = next->counter-1;
+		proc = next;
+		switchuvm(next);
+		next->state = RUNNING;
+		swtch(&cpu->scheduler, next->context);
+		switchkvm();
+
+		proc = 0;
+	  }	
+	  release(&ptable.lock);
   }
 }
 
@@ -316,16 +354,16 @@ scheduler(void)
 // be proc->intena and proc->ncli, but that would
 // break in the few places where a lock is held but
 // there's no process.
-void
+	void
 sched(void)
 {
-  int intena;
+	int intena;
 
-  if(!holding(&ptable.lock))
-    panic("sched ptable.lock");
-  if(cpu->ncli != 1)
-    panic("sched locks");
-  if(proc->state == RUNNING)
+	if(!holding(&ptable.lock))
+		panic("sched ptable.lock");
+	if(cpu->ncli != 1)
+		panic("sched locks");
+	if(proc->state == RUNNING)
     panic("sched running");
   if(readeflags()&FL_IF)
     panic("sched interruptible");
@@ -481,5 +519,85 @@ procdump(void)
         cprintf(" %p", pc[i]);
     }
     cprintf("\n");
+  }
+}
+
+// Obtain and return the nice value of target process
+// Return -1 if there is no process corresponding
+// to the pid.
+int 
+getnice(int pid)
+{
+  struct proc *p;
+  if(pid == 0){
+    return -1;
+  }
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == pid){
+      return p->nice;
+    }
+  }
+  return -1;
+}
+
+// Set the nice value of target process
+// Return 0 on success.
+// Return -1 if there is no process corresponding
+// to the pid or the nice value is invalid.
+int
+setnice(int pid, int value)
+{
+
+  if(value < 0 || value > 40){
+    return -1;
+  }
+
+  struct proc *p;
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == pid){
+      p->nice = value;
+      return 0;
+    }
+  }
+  return -1;
+}
+
+void
+ps(int pid)
+{
+  static char *states[] = {
+  [UNUSED]    "unused",
+  [EMBRYO]    "embryo",
+  [SLEEPING]  "sleep ",
+  [RUNNABLE]  "runble",
+  [RUNNING]   "run   ",
+  [ZOMBIE]    "zombie"
+  };
+  struct proc *p;
+  char *state;
+  if(pid == 0){
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state == UNUSED)
+        continue;
+      if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
+        state = states[p->state];
+      else
+        state = "???";
+      cprintf("%d %d %s %s (%d, %d)\n", p->pid, p->nice, state, p->name, p->counter, goodness(p));
+    }
+  }
+  else{
+
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->pid == pid){
+        if(p->state == UNUSED)
+          continue;
+        if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
+          state = states[p->state];
+        else
+          state = "???";
+        cprintf("%d %d %s %s (%d, %d)\n", p->pid, p->nice, state, p->name, p->counter, goodness(p));
+      }
+    }
   }
 }

@@ -63,6 +63,8 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  int nice;					   // task's nice value. 0 to 40. (static priority)
+  int counter;				   // time remaining in the task's current quantum (dynamic priority)
 };
 
 // Process memory is laid out contiguously, low addresses first:
