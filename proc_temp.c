@@ -12,9 +12,13 @@ struct {
   struct proc proc[NPROC];
 } ptable;
 
-int isyield = 0;
-int pre_yield;
-int priority;
+int min = 40;
+
+struct {
+	struct proc* MQ[40][NPROC];
+} multiqueue;
+
+
 static struct proc *initproc;
 
 int nextpid = 1;
@@ -52,7 +56,6 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
-  p->nice = 20;
 
   release(&ptable.lock);
 
@@ -76,6 +79,7 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
+  setnice(p->pid,20);
   return p;
 }
 
@@ -160,8 +164,7 @@ fork(void)
   np->sz = proc->sz;
   np->parent = proc;
   *np->tf = *proc->tf;
-  np->nice = proc->nice;
-  
+
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
 
@@ -283,72 +286,14 @@ void
 scheduler(void)
 {
   struct proc *p;
-  
   for(;;){
     // Enable interrupts on this processor.
     sti();
 
-/*
-	acquire(&ptable.lock);
-	int min_nice = 40;
-	for(p = ptable.proc; p<&ptable.proc[NPROC]; p++){
-		if(p->state != RUNNABLE) continue;
-
-		if(p->nice < min_nice){
-			min_nice = p->nice;
-		}
-	}
-
-	for(p = ptable.proc; p<&ptable.proc[NPROC]; p++){
-		if(p->state != RUNNABLE) continue;
-
-		if(p->nice == min_nice){
-			cprintf("pri :%d, i am %s\n", min_nice, p->name);
-			proc = p;
-			switchuvm(p);
-			p->state = RUNNING;
-			swtch(&cpu->scheduler, proc->context);
-			switchkvm();
-			proc = 0;
-		}
-	}
-	release(&ptable.lock);
-*/
-	acquire(&ptable.lock);
-	for(priority = 0; priority <= 40; priority++){
-//		cprintf("%d ", priority);	
-		for(p = ptable.proc; p<&ptable.proc[NPROC]; p++){
-			if(p->state != RUNNABLE){
-				continue;
-			}
-			if(priority == -1) break;
-
-			if(p->nice == priority){
-				//cprintf("%d %d %d %s\n", p->pid, p->nice, p->state, p->name);
-			    //cprintf("pri :%d, i am %s\n", priority, p->name);
-				
-				if(p->nice > pre_yield && isyield == 1){
-			//		cprintf("cant yield to weak one(%d > %d)\n", p->nice, pre_yield);
-					priority = -1;
-					break;
-				}
-
-				//context shift
-				proc = p;
-				switchuvm(p);
-				p->state = RUNNING;
-				swtch(&cpu->scheduler, proc->context);
-				switchkvm();
-			}
-			proc = 0;
-		}
-	}
-	release(&ptable.lock);
-
-/*
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+	
+	for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
 
@@ -365,8 +310,40 @@ scheduler(void)
       // It should have changed its p->state before coming back.
       proc = 0;
     }
-    release(&ptable.lock);
-*/
+	release(&ptable.lock);
+/*
+	int i;
+
+	for(i=0; i<NPROC; i++){
+		if(multiqueue.MQ[min][i]->state != RUNNABLE) continue;
+
+		p = multiqueue.MQ[min][i];
+		proc = p;
+		switchuvm(p);
+		p->state = RUNNING;
+		swtch(&cpu->scheduler, p->context);
+		switchkvm();
+
+		proc = 0;
+	
+	}
+	for(p = multiqueue.MQ[min]; p < &multiqueue.MQ[min][NPROC] ; p++){
+	//	cprintf("%d %d %d\n", p->nice, p->pid, p->state);
+		if(p->state != RUNNABLE)
+			continue;
+		
+		proc = p;
+		switchuvm(p);
+		p->state = RUNNING;
+		swtch(&cpu->scheduler, p->context);
+		switchkvm();
+
+		// Process is done running for now.
+		// It should have changed its p->state before coming back.
+		proc = 0;
+
+	}*/
+	release(&ptable.lock);
   }
 }
 
@@ -400,11 +377,8 @@ void
 yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
-  isyield = 1;
-  pre_yield = proc->nice;
   proc->state = RUNNABLE;
   sched();
-  isyield = 0;
   release(&ptable.lock);
 }
 
@@ -538,7 +512,7 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    cprintf("%d %d %s %s", p->nice, p->pid, state, p->name);
+    cprintf("%d %s %s", p->pid, state, p->name);
     if(p->state == SLEEPING){
       getcallerpcs((uint*)p->context->ebp+2, pc);
       for(i=0; i<10 && pc[i] != 0; i++)
@@ -578,25 +552,37 @@ setnice(int pid, int value)
     return -1;
   }
 
-  struct proc *p;
-  acquire(&ptable.lock);
+   struct proc *p;
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->pid == pid){
-	  //cprintf("%d(%s) : %d -> %d\n", pid, p->name, p->nice, value);
       p->nice = value;
 	  
-//	  cprintf("%d(%d) vs %d(%d)\n", proc->nice, proc->pid, p->nice, p->pid);
-//	  if(p->nice < proc->nice){
-		proc->state = RUNNABLE;
-		priority = -1;
-	  	sched();
-//	  }
-	  release(&ptable.lock);
-      return 0;
+	  if(min > value) min = value;
+/*
+	  struct proc *q;
+	  for(q = multiqueue.MQ[value]; q < &multiqueue.MQ[value][NPROC]; q++){
+	  
+		  if(q->state == UNUSED){
+			*q = *p;
+			q->state = RUNNABLE;
+		    cprintf("%d %d %s | ", q->nice, q->pid, states[q->state]);
+			break;
+		  }
+
+	  }
+*/	  	 
+	  
+	  int i;
+	  for(i=0; i<NPROC; i++){
+	  	if(multiqueue.MQ[value][i]->state == UNUSED){
+			multiqueue.MQ[value][i] = p;	
+	//		cprintf("%d %d %d", p->nice, p->pid, p->state);
+			//cprintf("%d %d %d", multiqueue.MQ[value][i]->nice, multiqueue.MQ[value][i]->pid, multiqueue.MQ[value][i]->state);
+		}	  
+	  }
+	  return 0;
     }
   }
-
-  release(&ptable.lock);
   return -1;
 }
 

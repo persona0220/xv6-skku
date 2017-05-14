@@ -28,6 +28,7 @@ OBJS = \
 	uart.o\
 	vectors.o\
 	vm.o\
+	
 
 # Cross-compiling (e.g., on Mac OS X)
 # TOOLPREFIX = i386-jos-elf
@@ -176,6 +177,16 @@ UPROGS=\
 	_wc\
 	_zombie\
 	_halt\
+	_getnice\
+	_setnice\
+	_ps\
+	_yield\
+	_test1\
+	_test2\
+	_test3\
+	_test4\
+	_test5\
+	_test6\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
@@ -239,7 +250,7 @@ qemu-nox-gdb: fs.img xv6.img .gdbinit
 # SKKU operating system
 PROJECTNUM=2
 # enter your ID
-STUDENTID=2011311671
+STUDENTID=2014314920
 
 # DO NOT EDIT
 tarball:

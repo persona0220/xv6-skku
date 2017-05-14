@@ -22,3 +22,6 @@
 #define SYS_close  21
 #define SYS_halt   22
 #define SYS_yield  23
+#define SYS_getnice 24
+#define SYS_setnice 25
+#define SYS_ps		26
