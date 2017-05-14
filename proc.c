@@ -72,7 +72,7 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
-
+  p->nice = 20;
   return p;
 }
 
@@ -110,7 +110,6 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
-
   release(&ptable.lock);
 }
 
@@ -481,5 +480,85 @@ procdump(void)
         cprintf(" %p", pc[i]);
     }
     cprintf("\n");
+  }
+}
+
+// Obtain and return the nice value of target process
+// Return -1 if there is no process corresponding
+// to the pid.
+int 
+getnice(int pid)
+{
+  struct proc *p;
+  if(pid == 0){
+    return -1;
+  }
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == pid){
+      return p->nice;
+    }
+  }
+  return -1;
+}
+
+// Set the nice value of target process
+// Return 0 on success.
+// Return -1 if there is no process corresponding
+// to the pid or the nice value is invalid.
+int
+setnice(int pid, int value)
+{
+
+  if(value < 0 || value > 40){
+    return -1;
+  }
+
+  struct proc *p;
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->pid == pid){
+      p->nice = value;
+      return 0;
+    }
+  }
+  return -1;
+}
+
+void
+ps(int pid)
+{
+  static char *states[] = {
+  [UNUSED]    "unused",
+  [EMBRYO]    "embryo",
+  [SLEEPING]  "sleep ",
+  [RUNNABLE]  "runble",
+  [RUNNING]   "run   ",
+  [ZOMBIE]    "zombie"
+  };
+  struct proc *p;
+  char *state;
+  if(pid == 0){
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state == UNUSED)
+        continue;
+      if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
+        state = states[p->state];
+      else
+        state = "???";
+      cprintf("%d %d %s %s\n", p->pid, p->nice, state, p->name);
+    }
+  }
+  else{
+
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->pid == pid){
+        if(p->state == UNUSED)
+          continue;
+        if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
+          state = states[p->state];
+        else
+          state = "???";
+        cprintf("%d %d %s %s\n", p->pid, p->nice, state, p->name);
+      }
+    }
   }
 }
