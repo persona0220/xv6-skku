@@ -118,9 +118,11 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
-int getpid(void);
+void						wakeup1(void* chan);
+int 						getpid(void);
 
 // thread.c
+// #5. thread support
 int thread_create(void *(*)(void *), int, void *, void *);
 void thread_exit(void *);
 int thread_join(int, void **);

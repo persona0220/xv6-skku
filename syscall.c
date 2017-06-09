@@ -100,6 +100,8 @@ extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
 extern int sys_halt(void);
+
+//#5 thread support
 extern int sys_thread_create(void);
 extern int sys_thread_exit(void);
 extern int sys_thread_join(void);
@@ -134,6 +136,8 @@ static int (*syscalls[])(void) = {
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
 [SYS_halt]    sys_halt,
+
+//#5. thread support
 [SYS_thread_create] sys_thread_create,
 [SYS_thread_exit] sys_thread_exit,
 [SYS_thread_join] sys_thread_join,

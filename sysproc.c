@@ -99,6 +99,7 @@ sys_halt(void)
 	return 0;
 }
 
+//#5. thread support
 int sys_thread_create(void){
 	int function, priority, arg, stack;
 
