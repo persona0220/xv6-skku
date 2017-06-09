@@ -21,6 +21,8 @@
 #define SYS_mkdir  20
 #define SYS_close  21
 #define SYS_halt   22
+
+// #5 thread support
 #define SYS_thread_create 23
 #define SYS_thread_exit 24
 #define SYS_thread_join 25

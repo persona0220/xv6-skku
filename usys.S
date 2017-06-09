@@ -30,6 +30,8 @@ SYSCALL(sbrk)
 SYSCALL(sleep)
 SYSCALL(uptime)
 SYSCALL(halt)
+
+//#5. thread support
 SYSCALL(thread_create)
 SYSCALL(thread_exit)
 SYSCALL(thread_join)
